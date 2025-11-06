@@ -1,150 +1,122 @@
-🧩 High-Level Summary
+# 💸 PayPal-Like Payment System (Spring Boot Microservices)
+
+A **Spring Boot microservices architecture** simulating a **PayPal-style payment system**, designed with **Spring Cloud Gateway**, **Spring Security**, **Kafka**, and **H2** databases.  
+It supports **user authentication, wallet operations, transaction orchestration, notifications, and rewards**, communicating through REST and Kafka events.
 
-A Spring Boot Microservices System simulating a “PayPal-like” payment flow, built with Spring Cloud Gateway, Spring Security, Kafka, and H2 databases.
-The system handles user authentication, wallet management, transactions, notifications, and rewards, communicating over HTTP and Kafka.
-All services run independently and integrate seamlessly through REST APIs and Kafka topics.
+---
 
-🏗️ Services and Responsibilities
-1. api-gateway (port: 8080)
+## 🧠 High-Level Overview
 
-Routes incoming requests to downstream microservices.
+This system models a **modern digital wallet ecosystem**, where services interact asynchronously and securely through Kafka and API Gateway.  
+It demonstrates microservice principles such as **service separation, security, idempotency, and event-driven communication**.
 
-Validates JWT for all routes except /auth/**.
+---
 
-Injects headers: X-User-Id, X-User-Email, and X-User-Role after token validation.
+## 🏗️ Services and Responsibilities
 
-Implements rate limiting using Spring Cloud Gateway Redis RequestRateLimiter (requires Redis at localhost:6379).
+### 🛡️ API Gateway (port 8080)
+- Routes requests to downstream microservices.  
+- Validates JWT tokens for all paths except `/auth/**`.  
+- Injects headers: `X-User-Id`, `X-User-Email`, and `X-User-Role`.  
+- Implements **rate limiting** using `RedisRequestRateLimiter` (requires Redis at `localhost:6379`).
 
-2. user-service (port: 8081)
+### 👤 User Service (port 8081)
+- Handles **signup/login** operations.  
+- Issues and validates **JWTs**.  
+- Optional Spring Security filter for protected endpoints.
 
-Handles user signup and login.
+### 💰 Wallet Service (port 8088)
+- Manages user wallets with:
+  - Currency, total balance, available balance.  
+- Supports operations: `createWallet`, `credit`, `debit`, `placeHold`, `captureHold`, `releaseHold`.  
+- Includes `WalletHold` model with a scheduler for **hold expiry**.
 
-Issues and validates JWT tokens.
+### 💳 Transaction Service (port 8082)
+- Orchestrates **fund transfers**:
+  1. Place sender hold  
+  2. Verify receiver wallet  
+  3. Capture hold (debit sender)  
+  4. Credit receiver  
+- Persists transaction lifecycle: `PENDING → SUCCESS/FAILED`.  
+- Publishes Kafka event `txn-initiated` on success.
 
-Includes optional Spring Security filter for authenticated requests.
+### 🔔 Notification Service (port 8084)
+- Consumes `txn-initiated` events.  
+- Persists notifications for the sender with transaction details.
 
-3. wallet-service (port: 8088)
+### 🏆 Reward Service (port 8089)
+- Consumes `txn-initiated` events.  
+- Creates `Reward` entries based on transaction amount.  
+- Ensures **idempotency** using `transactionId`.
 
-Manages user wallets, including:
+---
 
-Currency
+## 🔄 Data Flow (Typical Payment)
 
-Total balance
+1. Client sends request to **API Gateway** with **Bearer JWT**.  
+2. **Gateway** validates JWT → forwards to `transaction-service` with user headers.  
+3. **Transaction-service**:
+   - Validates caller vs senderId.  
+   - Calls `wallet-service`:
+     - `POST /hold` → reserve balance  
+     - Verify receiver wallet  
+     - `POST /capture` → debit sender  
+     - `POST /credit` → credit receiver  
+4. On success:
+   - Saves transaction (`SUCCESS`).  
+   - Emits Kafka event `txn-initiated`.  
+5. **notification-service** and **reward-service** consume and persist their respective records.
 
-Available balance
+---
 
-Supports operations:
+## ⚙️ Tech Stack & Infrastructure
 
-createWallet, credit, debit
+- **Spring Boot**, **Spring Cloud Gateway**, **Spring Security**  
+- **Apache Kafka** + **Zookeeper** (via `docker-compose.yml`)  
+- **H2 in-memory DB** with **JPA/Hibernate**  
+  - `ddl-auto = update`  
+  - `show-sql = true`  
+- **Configuration:** YAML per service  
+- **Communication:** REST (HTTP) + Kafka  
 
-placeHold, captureHold, releaseHold
+---
 
-Includes WalletHold model and hold lifecycle management.
+## 🚦 Gateway Route Configuration
 
-A scheduler automatically expires holds after timeout.
+| Route | Service | Auth Required | Rate Limit |
+|-------|----------|---------------|-------------|
+| `/auth/**` | user-service | ❌ | No |
+| `/api/transactions/**` | transaction-service | ✅ | Yes |
+| `/api/rewards/**` | reward-service | ✅ | Yes |
+| `/api/notifications/**` | notification-service | ✅ | Yes |
 
-4. transaction-service (port: 8082)
+---
 
-Orchestrates fund transfers between users.
+## 🪄 Kafka Configuration
 
-Flow:
+- **Topic:** `txn-initiated`  
+- **Producer:** `transaction-service`  
+- **Consumers:** `notification-service`, `reward-service`
 
-Places sender hold
+---
 
-Verifies receiver wallet
+## ⚠️ Risks & Improvements
 
-Captures hold (debit sender)
+- Reward-service Kafka consumer config cleanup (bootstrap servers spacing, trusted package path).  
+- Redis dependency missing in `docker-compose.yml` (required by Gateway rate-limiter).  
+- JWT secret duplicated across multiple services — should be centralized via **config server** or **environment variables**.  
+- `transaction-service` uses raw JSON via `RestTemplate`; refactor to **Feign Client** or **WebClient** for better type safety.
 
-Credits receiver
+---
 
-Persists transaction lifecycle: PENDING → SUCCESS / FAILED.
 
-Emits Kafka event txn-initiated on success for downstream consumers.
 
-5. notification-service (port: 8084)
+## 🧩 Summary
 
-Consumes txn-initiated Kafka events.
+This project demonstrates:
+- Event-driven microservice communication (Kafka).  
+- Secure API management using JWT and Gateway filters.  
+- Transaction orchestration and idempotent reward handling.  
+- Scalable, modular service architecture.
 
-Creates and stores a Notification record for the sender.
-
-Notification contains transaction details such as amount and involved parties.
-
-6. reward-service (port: 8089)
-
-Consumes txn-initiated Kafka events.
-
-Generates Reward records based on transaction amount.
-
-Ensures idempotency using transactionId.
-
-🔄 Typical Data Flow (Payment Transaction)
-
-Client sends request to API Gateway with Bearer JWT.
-
-Gateway validates token → forwards request to transaction-service with user headers.
-
-Transaction-service:
-
-Validates that caller = sender.
-
-Calls wallet-service:
-
-POST /hold → reserve sender’s balance.
-
-Verify receiver’s wallet.
-
-POST /capture → debit sender.
-
-POST /credit → credit receiver.
-
-On success:
-
-Saves transaction (SUCCESS).
-
-Publishes Kafka event txn-initiated.
-
-notification-service and reward-service consume the event and persist related data.
-
-⚙️ Tech & Infrastructure
-
-Frameworks: Spring Boot, Spring Cloud Gateway, Spring Security
-
-Messaging: Apache Kafka + Zookeeper (via docker-compose.yml)
-
-Database: H2 (in-memory) using JPA/Hibernate
-
-spring.jpa.hibernate.ddl-auto=update
-
-spring.jpa.show-sql=true
-
-Configuration: YAML per service
-
-Communication: REST (HTTP) + Kafka
-
-🧩 Gateway Route Configuration
-Route	Destination Service	Auth	Rate Limit
-/auth/**	user-service	❌	No
-/api/transactions/**	transaction-service	✅	Yes
-/api/rewards/**	reward-service	✅	Yes
-/api/notifications/**	notification-service	✅	Yes
-🪄 Kafka
-
-Topic: txn-initiated
-
-Producers: transaction-service
-
-Consumers: notification-service, reward-service
-
-🚨 Risks & Improvement Opportunities
-
-Kafka consumer config (reward-service):
-Needs cleanup — check bootstrap server string and trusted package configuration.
-
-Redis dependency:
-Required by gateway rate-limiter but missing in docker-compose.yml.
-
-JWT secret duplication:
-Secret is hardcoded in multiple services — should be centralized via environment variables or a config server.
-
-Unsafe REST calls:
-transaction-service uses raw JSON strings with RestTemplate; should migrate to Feign Client or WebClient for better type safety.
+---
