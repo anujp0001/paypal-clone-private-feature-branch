@@ -1,4 +1,4 @@
-# 💸 PayPal-Like Payment System (Spring Boot Microservices)
+# 💸 PayPal-Like Payment System (Spring Boot Microservices).
 
 A **Spring Boot microservices architecture** simulating a **PayPal-style payment system**, designed with **Spring Cloud Gateway**, **Spring Security**, **Kafka**, and **H2** databases.  
 It supports **user authentication, wallet operations, transaction orchestration, notifications, and rewards**, communicating through REST and Kafka events.
