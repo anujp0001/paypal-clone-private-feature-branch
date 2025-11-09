@@ -120,3 +120,5 @@ This project demonstrates:
 - Scalable, modular service architecture.
 
 ---
+<img width="503" height="512" alt="image" src="https://github.com/user-attachments/assets/17acd080-f983-4117-a540-13ce2b591ea9" />
+
